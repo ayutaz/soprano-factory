@@ -52,6 +52,9 @@ def main():
     with open(f'{input_dir}/metadata.txt', encoding='utf-8') as f:
         data = f.read().split('\n')
         for line in data:
+            line = line.strip()
+            if not line:
+                continue
             filename, transcript = line.split('|', maxsplit=1)
             files.append((filename, transcript))
     print(f'{len(files)} samples located in directory.')
@@ -62,6 +65,13 @@ def main():
         filename, transcript = sample
         sr, audio = wavfile.read(f'{input_dir}/wavs/{filename}.wav')
         audio = torch.from_numpy(audio)
+        if not torch.is_floating_point(audio):
+            if audio.dtype == torch.int16:
+                audio = audio.to(torch.float32) / 32768.0
+            elif audio.dtype == torch.int32:
+                audio = audio.to(torch.float32) / 2147483648.0
+            else:
+                audio = audio.to(torch.float32)
         if sr != SAMPLE_RATE:
             audio = torchaudio.functional.resample(audio, sr, SAMPLE_RATE)
         audio = audio.unsqueeze(0)

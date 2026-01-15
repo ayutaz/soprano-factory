@@ -36,6 +36,40 @@ def get_args():
         required=True,
         type=pathlib.Path
     )
+    parser.add_argument("--device",
+        default="cuda:0",
+        help="Device to use (e.g., cuda:0 or cpu)"
+    )
+    parser.add_argument("--seed",
+        type=int,
+        default=1337,
+        help="Random seed"
+    )
+    parser.add_argument("--max-steps",
+        type=int,
+        default=10000,
+        help="Number of training steps"
+    )
+    parser.add_argument("--batch-size",
+        type=int,
+        default=4,
+        help="Batch size for packed sequences"
+    )
+    parser.add_argument("--grad-accum-steps",
+        type=int,
+        default=1,
+        help="Gradient accumulation steps"
+    )
+    parser.add_argument("--seq-len",
+        type=int,
+        default=1024,
+        help="Sequence length for packed tokens"
+    )
+    parser.add_argument("--val-freq",
+        type=int,
+        default=250,
+        help="Validation frequency in steps (0 to disable)"
+    )
     parser.add_argument("--text-factor",
         type=float,
         default=0.0,
@@ -46,18 +80,18 @@ def get_args():
 args = get_args()
 
 # training hyperparameters
-device = 'cuda:0'
-seed = 1337
+device = args.device
+seed = args.seed
 max_lr = 5e-4
 warmup_ratio = 0.1
 cooldown_ratio = 0.1
 min_lr = 0.1 * max_lr
-batch_size = 4
-grad_accum_steps = 1
-seq_len = 1024
-val_freq = 250
+batch_size = args.batch_size
+grad_accum_steps = args.grad_accum_steps
+seq_len = args.seq_len
+val_freq = args.val_freq
 text_factor = args.text_factor
-max_steps = 10000
+max_steps = args.max_steps
 betas = (0.9, 0.95)
 weight_decay = 0.1
 train_dataset_path = f'{args.input_dir}/train.json'
@@ -125,7 +159,11 @@ def evaluate(val_dataloader):
         for _ in range(val_loss_steps):
             x, y = next(val_dataloader_it)
             x, y = x.to(device), y.to(device)
-            with torch.autocast(device_type=device_type, dtype=torch.bfloat16):
+            if use_autocast:
+                with torch.autocast(device_type=device_type, dtype=torch.bfloat16):
+                    logits = model(x).logits
+                    audio_loss, text_loss, acc = compute_loss(logits, y, val_loss_steps)
+            else:
                 logits = model(x).logits
                 audio_loss, text_loss, acc = compute_loss(logits, y, val_loss_steps)
             val_audio_loss_accum += audio_loss.detach()
@@ -141,6 +179,8 @@ if added_tokens:
     print(f"Added {added_tokens} Japanese tokens to tokenizer.")
 if __name__ == '__main__':
     device_type = "cuda" if device.startswith("cuda") else "cpu"
+    use_autocast = device_type == "cuda"
+    model_dtype = torch.bfloat16 if use_autocast else torch.float32
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed(seed)
@@ -155,7 +195,7 @@ if __name__ == '__main__':
     model = AutoModelForCausalLM.from_pretrained('ekwek/Soprano-80M')
     if added_tokens:
         model.resize_token_embeddings(len(tokenizer))
-    model.to(torch.bfloat16).to(device)
+    model.to(model_dtype).to(device)
     model.train()
 
     # dataset
@@ -203,7 +243,11 @@ if __name__ == '__main__':
                 x, y = next(dataloader_it)
             x, y = x.to(device), y.to(device)
 
-            with torch.autocast(device_type=device_type, dtype=torch.bfloat16):
+            if use_autocast:
+                with torch.autocast(device_type=device_type, dtype=torch.bfloat16):
+                    logits = model(x).logits
+                    audio_loss, text_loss, acc = compute_loss(logits, y, grad_accum_steps)
+            else:
                 logits = model(x).logits
                 audio_loss, text_loss, acc = compute_loss(logits, y, grad_accum_steps)
             audio_loss_accum += audio_loss.detach()
@@ -217,7 +261,8 @@ if __name__ == '__main__':
         for param_group in opt.param_groups:
             param_group['lr'] = lr
         opt.step()
-        torch.cuda.synchronize()
+        if device_type == "cuda":
+            torch.cuda.synchronize()
         total_tokens = step * batch_size*seq_len*grad_accum_steps
         end = time.time()
         dt = (end-start)*1000
