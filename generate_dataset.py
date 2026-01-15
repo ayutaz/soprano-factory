@@ -36,6 +36,25 @@ def get_args():
     )
     return parser.parse_args()
 
+def parse_metadata_lines(lines):
+    files = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        filename, transcript = line.split('|', maxsplit=1)
+        files.append((filename, transcript))
+    return files
+
+def ensure_float_audio(audio):
+    if torch.is_floating_point(audio):
+        return audio
+    if audio.dtype == torch.int16:
+        return audio.to(torch.float32) / 32768.0
+    if audio.dtype == torch.int32:
+        return audio.to(torch.float32) / 2147483648.0
+    return audio.to(torch.float32)
+
 def main():
     args = get_args()
     input_dir = args.input_dir
@@ -50,13 +69,7 @@ def main():
     print("Reading metadata.")
     files = []
     with open(f'{input_dir}/metadata.txt', encoding='utf-8') as f:
-        data = f.read().split('\n')
-        for line in data:
-            line = line.strip()
-            if not line:
-                continue
-            filename, transcript = line.split('|', maxsplit=1)
-            files.append((filename, transcript))
+        files = parse_metadata_lines(f.read().split('\n'))
     print(f'{len(files)} samples located in directory.')
 
     print("Encoding audio.")
@@ -64,14 +77,7 @@ def main():
     for sample in tqdm(files):
         filename, transcript = sample
         sr, audio = wavfile.read(f'{input_dir}/wavs/{filename}.wav')
-        audio = torch.from_numpy(audio)
-        if not torch.is_floating_point(audio):
-            if audio.dtype == torch.int16:
-                audio = audio.to(torch.float32) / 32768.0
-            elif audio.dtype == torch.int32:
-                audio = audio.to(torch.float32) / 2147483648.0
-            else:
-                audio = audio.to(torch.float32)
+        audio = ensure_float_audio(torch.from_numpy(audio))
         if sr != SAMPLE_RATE:
             audio = torchaudio.functional.resample(audio, sr, SAMPLE_RATE)
         audio = audio.unsqueeze(0)
