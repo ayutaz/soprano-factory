@@ -22,6 +22,7 @@ from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from dataset import AudioDataset
+from tokenizer_utils import add_japanese_tokens
 
 
 def get_args():
@@ -34,6 +35,11 @@ def get_args():
     parser.add_argument("--save-dir",
         required=True,
         type=pathlib.Path
+    )
+    parser.add_argument("--text-factor",
+        type=float,
+        default=0.0,
+        help="Weight for text-token loss (0.0 disables text loss)"
     )
     return parser.parse_args()
 
@@ -50,7 +56,7 @@ batch_size = 4
 grad_accum_steps = 1
 seq_len = 1024
 val_freq = 250
-text_factor = 0.0 # currently does not train on text inputs, you can increase to change this
+text_factor = args.text_factor
 max_steps = 10000
 betas = (0.9, 0.95)
 weight_decay = 0.1
@@ -130,6 +136,9 @@ def evaluate(val_dataloader):
 
 
 tokenizer = AutoTokenizer.from_pretrained('ekwek/Soprano-80M')
+added_tokens = add_japanese_tokens(tokenizer, [train_dataset_path, val_dataset_path])
+if added_tokens:
+    print(f"Added {added_tokens} Japanese tokens to tokenizer.")
 if __name__ == '__main__':
     device_type = "cuda" if device.startswith("cuda") else "cpu"
     torch.manual_seed(seed)
@@ -144,6 +153,8 @@ if __name__ == '__main__':
 
     # model
     model = AutoModelForCausalLM.from_pretrained('ekwek/Soprano-80M')
+    if added_tokens:
+        model.resize_token_embeddings(len(tokenizer))
     model.to(torch.bfloat16).to(device)
     model.train()
 
