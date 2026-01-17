@@ -133,11 +133,11 @@ python train.py --input-dir moespeech_dataset --save-dir weights_moespeech_v5 \
 
 ### 訓練結果
 
-| バージョン | 最終 val_loss | 備考 |
-|-----------|---------------|------|
-| train_decoder.py (100k steps) | 1.0982 | FSQからの情報損失が大きい |
-| train_decoder_v2.py (50k steps) | 0.1650 | Melベースで大幅改善 |
-| train_decoder_gan.py (100k steps) | TBD | GAN訓練進行中 |
+| バージョン | 最終 val_loss | 音質 | 備考 |
+|-----------|---------------|------|------|
+| train_decoder.py (100k steps) | 1.0982 | 低（機械音） | FSQからの情報損失が大きい |
+| train_decoder_v2.py (50k steps) | 0.1650 | 中（やや機械音） | Melベースで大幅改善 |
+| **train_decoder_gan.py (100k steps)** | **0.2593** | **高（自然）** | **GAN訓練で最高品質** |
 
 ### 推奨: GAN訓練 (`train_decoder_gan.py`)
 
@@ -249,13 +249,13 @@ ISTFTHead
 2. ✅ **MoeSpeechでの訓練実行**
    - train_decoder.py: 100k steps, val_loss 1.0982
    - train_decoder_v2.py: 50k steps, val_loss 0.1650
-   - train_decoder_gan.py: 進行中
+   - train_decoder_gan.py: 100k steps, val_loss 0.2593 ✅
 
 ### 優先度: 高
 
-3. **GAN訓練の完了と評価**
-   - 100kステップ訓練の完了
-   - 音声品質の主観評価
+3. ✅ **GAN訓練の完了と評価**
+   - 100kステップ訓練完了（val_loss: 0.2593）
+   - 音声品質: 自然な音声を生成
 
 4. **Sopranoへの統合**
    - 訓練済みデコーダーをSopranoパイプラインに統合
@@ -309,3 +309,4 @@ ISTFTHead
 | 2026-01-17 | train_decoder_gan.py作成（GAN訓練、高品質音声生成） |
 | 2026-01-17 | テストスクリプト作成（test_decoder_v2.py, test_decoder_inference.py） |
 | 2026-01-17 | ドキュメント更新（CLAUDE.md, japanese_tts_research.md） |
+| 2026-01-18 | train_decoder_gan.py 100kステップ訓練完了（val_loss: 0.2593、音質良好） |
