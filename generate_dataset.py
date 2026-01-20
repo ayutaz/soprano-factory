@@ -4,9 +4,11 @@ This script creates two JSON files for train and test splits in the provided dir
 
 Usage:
 python generate_dataset.py --input-dir path/to/files
+python generate_dataset.py --input-dir path/to/files --no-phonemes  # Disable phoneme conversion
 
 Args:
 --input-dir: Path to directory of LJSpeech-style dataset. If none is provided this defaults to the provided example dataset.
+--no-phonemes: Disable phoneme conversion (phoneme mode is enabled by default for Japanese).
 """
 import argparse
 import pathlib
@@ -20,6 +22,7 @@ from tqdm import tqdm
 from huggingface_hub import hf_hub_download
 
 from encoder.codec import Encoder
+from phoneme_utils import text_to_phoneme_string
 
 
 SAMPLE_RATE = 32000
@@ -33,6 +36,10 @@ def get_args():
         required=False,
         default="./example_dataset",
         type=pathlib.Path
+    )
+    parser.add_argument("--no-phonemes",
+        action="store_true",
+        help="Disable phoneme conversion (use raw Japanese characters instead)"
     )
     return parser.parse_args()
 
@@ -58,6 +65,12 @@ def ensure_float_audio(audio):
 def main():
     args = get_args()
     input_dir = args.input_dir
+    use_phonemes = not args.no_phonemes
+
+    if use_phonemes:
+        print("Phoneme mode enabled (default): Converting Japanese text to phoneme tokens.")
+    else:
+        print("Character mode: Using raw Japanese characters.")
 
     print("Loading model.")
     encoder = Encoder()
@@ -76,6 +89,11 @@ def main():
     dataset = []
     for sample in tqdm(files):
         filename, transcript = sample
+
+        # Convert text to phonemes if enabled
+        if use_phonemes:
+            transcript = text_to_phoneme_string(transcript)
+
         sr, audio = wavfile.read(f'{input_dir}/wavs/{filename}.wav')
         audio = ensure_float_audio(torch.from_numpy(audio))
         if sr != SAMPLE_RATE:
