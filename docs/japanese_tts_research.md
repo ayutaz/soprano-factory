@@ -583,19 +583,35 @@ uv run python train.py \
     --wandb-run-name "v11-contrastive-moespeech"
 ```
 
-### 期待される改善
+### 訓練結果（2026-01-20実施）
 
-| メトリクス | 現在 | 期待値 |
-|-----------|------|--------|
-| val_acc | 10-12% | 25-40% |
-| Text-Audio整列 | ランダム | 構造化 |
-| 最初の音声トークン精度 | ~5% | 20-35% |
+**訓練設定:**
+- max_steps: 50,000
+- batch_size: 8
+- contrastive_factor: 0.5
+- text_factor: 0.5
+- transition_factor: 5.0
 
-### WandB監視指標
+**結果:**
 
-- `train/contrastive_loss`: 減少することを確認
-- `val/contrastive_loss`: 検証用Contrastive損失
-- `val_acc`: 15%以上への上昇を期待
+| メトリクス | 開始時 | 最終値 | 期待値 |
+|-----------|--------|--------|--------|
+| Contrastive Loss | 3.0 | **0.02** ✅ | 減少 |
+| Audio Loss | 9.0 | 6.37 | 減少 |
+| Text Loss | 10.3 | 1.29 | 減少 |
+| **val_acc** | 0.3% | **7.5%** ❌ | 25-40% |
+
+**分析:**
+- Contrastive Lossは期待通り収束（テキスト・音声表現の整列に成功）
+- しかしval_accは7.5%で停滞（期待の25-40%に遠く及ばず）
+- 生成音声は依然として意味不明
+
+**結論:** Contrastive Learningは表現空間の整列には有効だが、日本語TTSの品質改善には寄与しなかった。
+
+### WandBログ
+
+- 実行名: `v11-contrastive-moespeech`
+- URL: https://wandb.ai/yousan/soprano-factory/runs/nqkkquj6
 
 ---
 
@@ -713,3 +729,53 @@ sil^n-i+h=o/A:-3+1+7/B:xx-xx_xx/C:02_xx+xx/D:02+xx_xx/E:xx_xx!xx_xx-xx/F:7_4#0_x
 | 2026-01-18 | **Option B調査**: pyopenjtalk-plus + アクセントラベル（a1-a3）によるアプローチ策定 |
 | 2026-01-20 | **Option B-F実施**: 全アプローチ失敗（val_acc ~10-12%）、根本原因を再調査 |
 | 2026-01-20 | **新アプローチ**: Contrastive Text-Audio Alignment Lossを実装 |
+| 2026-01-20 | **Contrastive Learning訓練実施**: 50kステップ完了、val_acc=7.5%で改善なし |
+| 2026-01-20 | **最終結論**: Sopranoアーキテクチャでの日本語対応は現在のアプローチでは困難と判断 |
+
+---
+
+## 14. 最終結論と推奨事項
+
+### 全アプローチの試行結果
+
+| アプローチ | 実施日 | val_acc | 音声品質 | 結果 |
+|-----------|--------|---------|----------|------|
+| Option A: text_factor=0.5 | 2026-01-18 | 10.3% | 意味不明 | ❌ 失敗 |
+| Option B: 音素トークン | 2026-01-19 | 10-12% | 意味不明 | ❌ 失敗 |
+| Option C: 遷移損失 | 2026-01-19 | 10-12% | 意味不明 | ❌ 失敗 |
+| Option E: Attention損失 | 2026-01-19 | 10-12% | 意味不明 | ❌ 失敗 |
+| Option F: Embedding 10x LR | 2026-01-20 | 10-12% | 意味不明 | ❌ 失敗 |
+| **Contrastive Learning** | 2026-01-20 | **7.5%** | 意味不明 | ❌ 失敗 |
+
+### 技術的知見
+
+1. **損失関数の構造的問題**: audio→audio予測が支配的（8000:1の比率）
+2. **テキスト→音声遷移**: 明示的に最適化されていない
+3. **Contrastive Loss**: 表現空間の整列には成功（loss→0.02）したが、生成品質には寄与せず
+4. **データ量**: 60Kサンプル（~125時間）では不十分な可能性、ただしアーキテクチャ問題が主因
+
+### 結論
+
+**Soprano（Qwen3 LLM + 音声トークン）アーキテクチャでの日本語TTS対応は、現在試行したアプローチでは実用的な品質を達成できないと判断。**
+
+理由:
+- 6つの異なるアプローチをすべて試行
+- すべてval_acc 7-12%の範囲で停滞
+- 生成音声は一貫して意味不明
+
+### 推奨事項
+
+日本語TTSが必要な場合、以下の日本語ネイティブモデルへの移行を推奨:
+
+| モデル | 特徴 | リンク |
+|--------|------|--------|
+| **Style-Bert-VITS2** | 高品質、感情制御可能 | [GitHub](https://github.com/litagin02/Style-Bert-VITS2) |
+| **VITS / VITS2** | 軽量、高速 | [GitHub](https://github.com/jaywalnut310/vits) |
+| **VOICEVOX** | 商用利用可能、GUI付き | [公式サイト](https://voicevox.hiroshiba.jp/) |
+
+### 今後の可能性（参考）
+
+Sopranoでの日本語対応を継続する場合の追加検討事項:
+1. **2000時間データセット**: 効果は限定的と予想されるが、試行の余地あり
+2. **Two-Stage Training**: 埋め込み層のみを先に訓練、その後全体を訓練
+3. **アーキテクチャ変更**: 損失関数の根本的な再設計が必要
